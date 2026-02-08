@@ -1,3 +1,5 @@
+# Predicts the species name of one image
+
 import torch
 import torch.nn as nn
 from torchvision import transforms, models
@@ -48,3 +50,4 @@ top2_conf = top2_prob[0][1].item() * 100
 
 print(f"Top prediction: {class_names[top1_idx]} ({top1_conf:.2f}% confidence)")
 print(f"Second best:   {class_names[top2_idx_2]} ({top2_conf:.2f}% confidence)")
+
