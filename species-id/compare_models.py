@@ -1,3 +1,6 @@
+# Test MobileNetV3 small and large models using pre-downloaded test images separate from training images
+# For results, see results.csv
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -139,4 +142,5 @@ with open(output_csv, mode="w", newline="") as file:
     writer.writerows(rows)
 
 print(f"Results saved to {output_csv}")
+
 
