@@ -1,3 +1,6 @@
+# Train neural network based on pre-downloaded training images sorted into folders
+# Currently training MobileNetV3 small and large models to see which is optimal for project use
+
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -84,4 +87,5 @@ for epoch in range(epochs):
 # Save model .pth file
 torch.save(model.state_dict(), "mobilenetv3_small_model.pth")
 print("Model saved as mobilenetv3_small_model.pth")
+
 
