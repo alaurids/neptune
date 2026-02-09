@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBox
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -41,15 +43,14 @@ class MainActivity : ComponentActivity() {
 @PreviewScreenSizes
 @Composable
 fun ProjectNeptuneApp() {
-    var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
+    var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.REFERENCE_GUIDE) }
 
     NavigationSuiteScaffold(
         navigationSuiteItems = {
             AppDestinations.entries.forEach {
                 item(
                     icon = {
-                        val icon = it.icon
-                        when (icon) {
+                        when (val icon = it.icon) {
                             is ImageVector -> {
                                 Icon(
                                     icon,
@@ -84,10 +85,10 @@ enum class AppDestinations(
     val label: String,
     val icon: Any,
 ) {
-    HOME("Home", Icons.Default.Home),
-    FAVORITES("Favorites", Icons.Default.Favorite),
-    PROFILE("Profile", Icons.Default.AccountBox),
+    CAMERA("Camera", Icons.Default.CameraAlt),
+    CATCH_LOG("Catch Log", Icons.Default.AutoStories),
     REFERENCE_GUIDE("Reference", R.drawable.referenceguide),
+    SETTINGS("Settings", Icons.Default.Settings),
 }
 
 @Composable
