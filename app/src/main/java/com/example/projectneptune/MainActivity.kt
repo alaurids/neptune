@@ -21,6 +21,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
 import com.example.projectneptune.ui.theme.ProjectNeptuneTheme
@@ -47,10 +48,21 @@ fun ProjectNeptuneApp() {
             AppDestinations.entries.forEach {
                 item(
                     icon = {
-                        Icon(
-                            it.icon,
-                            contentDescription = it.label
-                        )
+                        val icon = it.icon
+                        when (icon) {
+                            is ImageVector -> {
+                                Icon(
+                                    icon,
+                                    contentDescription = it.label
+                                )
+                            }
+                            is Int -> {
+                                Icon(
+                                    painterResource(icon),
+                                    contentDescription = it.label
+                                )
+                            }
+                        }
                     },
                     label = { Text(it.label) },
                     selected = it == currentDestination,
@@ -70,11 +82,12 @@ fun ProjectNeptuneApp() {
 
 enum class AppDestinations(
     val label: String,
-    val icon: ImageVector,
+    val icon: Any,
 ) {
     HOME("Home", Icons.Default.Home),
     FAVORITES("Favorites", Icons.Default.Favorite),
     PROFILE("Profile", Icons.Default.AccountBox),
+    REFERENCE_GUIDE("Reference", R.drawable.referenceguide),
 }
 
 @Composable
