@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">ProjectNeptune</string>
+    <string name="app_version">1.0.0</string>
+    <string name="manilla_clam">Manila Clam</string>
 </resources>
