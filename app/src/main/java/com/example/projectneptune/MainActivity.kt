@@ -92,14 +92,16 @@ fun ProjectNeptuneApp() {
             }
         }
     ) {
-        Scaffold(modifier = Modifier) { innerPadding ->
-            ReferenceGrid(modifier = Modifier.fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp))
+        when (currentDestination) {
+            AppDestinations.CAMERA -> CameraDestination()
+            AppDestinations.CATCH_LOG -> CatchLogDestination()
+            AppDestinations.REFERENCE_GUIDE -> ReferenceGuideDestination()
+            AppDestinations.SETTINGS -> SettingsDestination()
         }
     }
 }
 
+// Lists of destinations of applications
 enum class AppDestinations(
     val label: String,
     val icon: Any,
@@ -108,6 +110,36 @@ enum class AppDestinations(
     CATCH_LOG("Catch Log", Icons.Default.AutoStories),
     REFERENCE_GUIDE("Reference", R.drawable.reference_icon),
     SETTINGS("Settings", Icons.Default.Settings),
+}
+@Composable
+fun CameraDestination(
+    modifier: Modifier = Modifier
+){
+    Text("Camera")
+}
+
+@Composable
+fun CatchLogDestination(
+    modifier: Modifier = Modifier
+){
+    Text("Catch Log")
+}
+
+@Composable
+fun ReferenceGuideDestination(
+    modifier: Modifier = Modifier
+){
+    ReferenceGrid(modifier
+        .fillMaxSize()
+        .padding(horizontal = 16.dp)
+    )
+}
+
+@Composable
+fun SettingsDestination(
+    modifier: Modifier = Modifier
+){
+    Text("Settings")
 }
 
 @Composable
