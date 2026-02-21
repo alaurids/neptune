@@ -111,18 +111,19 @@ enum class AppDestinations(
     REFERENCE_GUIDE("Reference", R.drawable.reference_icon),
     SETTINGS("Settings", Icons.Default.Settings),
 }
+
 @Composable
 fun CameraDestination(
     modifier: Modifier = Modifier
 ){
-    Text("Camera")
+    Text("Camera", modifier = modifier)
 }
 
 @Composable
 fun CatchLogDestination(
     modifier: Modifier = Modifier
 ){
-    Text("Catch Log")
+    Text("Catch Log", modifier = modifier)
 }
 
 @Composable
@@ -139,7 +140,7 @@ fun ReferenceGuideDestination(
 fun SettingsDestination(
     modifier: Modifier = Modifier
 ){
-    Text("Settings")
+    Text("Settings", modifier = modifier)
 }
 
 @Composable
@@ -170,7 +171,6 @@ fun ReferenceCard(
             Text(
                 text = stringResource(label),
                 style = MaterialTheme.typography.titleMedium,
-                //modifier = Modifier.paddingFromBaseline(8.dp,8.dp)
             )
         }
     }
@@ -182,47 +182,15 @@ fun ReferenceGrid(
 )
 {
     LazyVerticalGrid(
-        modifier = modifier.size(425.dp),
+        modifier = modifier,
         columns = GridCells.Fixed(2),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item() {
+        items(10) {
             ReferenceCard(R.mipmap.manilla_clam_foreground, R.string.manilla_clam)
         }
-        item() {
-            ReferenceCard(R.mipmap.manilla_clam_foreground, R.string.manilla_clam)
-        }
-        item() {
-            ReferenceCard(R.mipmap.manilla_clam_foreground, R.string.manilla_clam)
-        }
-        item() {
-            ReferenceCard(R.mipmap.manilla_clam_foreground, R.string.manilla_clam)
-        }
-        item() {
-            ReferenceCard(R.mipmap.manilla_clam_foreground, R.string.manilla_clam)
-        }
-        item() {
-            ReferenceCard(R.mipmap.manilla_clam_foreground, R.string.manilla_clam)
-        }
-        item() {
-            ReferenceCard(R.mipmap.manilla_clam_foreground, R.string.manilla_clam)
-        }
-        item() {
-            ReferenceCard(R.mipmap.manilla_clam_foreground, R.string.manilla_clam)
-        }
-        item() {
-            ReferenceCard(R.mipmap.manilla_clam_foreground, R.string.manilla_clam)
-        }
-        item() {
-            ReferenceCard(R.mipmap.manilla_clam_foreground, R.string.manilla_clam)
-        }
-
-
-
-
     }
-
 }
 
 @Composable
@@ -245,9 +213,6 @@ fun GreetingPreview() {
 @Composable
 fun ReferenceCardPreview() {
     ProjectNeptuneTheme {
-        // Use R.mipmap.manilla_clam_foreground instead of R.mipmap.manilla_clam because
-        // painterResource does not support adaptive icons (XML files in mipmap-anydpi-v26).
-        // Using the foreground raster asset directly ensures it can be rendered.
         ReferenceCard(R.mipmap.manilla_clam_foreground, R.string.manilla_clam)
     }
 }
