@@ -1,5 +1,5 @@
-import androidx.room.*
-import kotlinx.coroutines.flow.Flow
+import androidx.room.* //Imports standard Room
+import kotlinx.coroutines.flow.Flow //Tool allows UI to update automatically 
 
 @Dao
 interface ShellfishDao {
