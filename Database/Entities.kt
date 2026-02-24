@@ -24,7 +24,7 @@ data class Species(
             childColumns = ["detectedSpeciesId"]
         )
     ],
-    indices = [Index("detectedSpeciesId")]
+    indices = [Index("detectedSpeciesId")] //Index databse for specific species ID, for performance 
 )
 data class Scan(
     @PrimaryKey(autoGenerate = true) val scanId: Int = 0,
