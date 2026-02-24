@@ -16,9 +16,12 @@ abstract class ShellfishDatabase : RoomDatabase() {
             // If the INSTANCE is not null, then return it,
             // if it is, then create the database
             return INSTANCE ?: synchronized(this) {
+                //constructer, physically creates on phone
                 val instance = Room.databaseBuilder(
+                    //database connection stays live as long as the app is running
                     context.applicationContext,
                     ShellfishDatabase::class.java,
+                    //important, this is the name of the DB room will create on the clients phone "shellfish_database.db"
                     "shellfish_database"
                 ).build()
                 INSTANCE = instance
