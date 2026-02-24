@@ -14,7 +14,7 @@ abstract class ShellfishDatabase : RoomDatabase() {
 
         fun getDatabase(context: Context): ShellfishDatabase {
             // If the INSTANCE is not null, then return it,
-            // if it is, then create the database
+            // Checks to see if database exist or not
             return INSTANCE ?: synchronized(this) {
                 //constructer, physically creates on phone
                 val instance = Room.databaseBuilder(
