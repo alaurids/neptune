@@ -3,10 +3,10 @@ import androidx.room.ForeignKey
 import androidx.room.PrimaryKey
 import androidx.room.Index
 
-// Reference library for the 18 shellfish species
+// Reference library for the shellfish species
 @Entity(tableName = "species_library")
 data class Species(
-    @PrimaryKey val speciesId: Int, // Matches 0-17 index from your AI model
+    @PrimaryKey val speciesId: Int, // Matches index from AI model
     val commonName: String,
     val scientificName: String,
     val description: String,
