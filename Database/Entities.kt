@@ -26,10 +26,11 @@ data class Species(
     ],
     indices = [Index("detectedSpeciesId")] //Index databse for specific species ID, for performance 
 )
+//class for photos 
 data class Scan(
-    @PrimaryKey(autoGenerate = true) val scanId: Int = 0,
+    @PrimaryKey(autoGenerate = true) val scanId: Int = 0, //creates unique ID for every photo taken 
     val detectedSpeciesId: Int,
     val imagePath: String, 
     val aiConfidence: Float,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis() //stores the exact time/date photo was taken
 )
