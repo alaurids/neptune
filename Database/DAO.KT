@@ -15,7 +15,4 @@ interface ShellfishDao {
     @Query("SELECT * FROM species_library WHERE speciesId = :id")
     suspend fun getSpeciesById(id: Int): Species?
 
-    // Deletes a specific scan record
-    @Query("DELETE FROM scans WHERE scanId = :id")
-    suspend fun deleteScanById(id: Int)
 }
