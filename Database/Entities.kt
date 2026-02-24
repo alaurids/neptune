@@ -6,7 +6,7 @@ import androidx.room.Index
 // Reference library for the shellfish species
 @Entity(tableName = "species_library")
 data class Species(
-    @PrimaryKey val speciesId: Int, // Matches index from AI model
+    @PrimaryKey val speciesId: Int, // Matches index from AI model unique ID per species 
     val commonName: String,
     val scientificName: String,
     val description: String,
