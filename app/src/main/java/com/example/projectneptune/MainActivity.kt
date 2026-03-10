@@ -29,10 +29,14 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -66,13 +70,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
 import androidx.compose.ui.unit.dp
@@ -81,6 +93,7 @@ import androidx.core.content.ContextCompat
 import com.example.projectneptune.ui.theme.ProjectNeptuneTheme
 import java.io.File
 import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.ExecutorService
@@ -210,6 +223,7 @@ fun CameraPreview(
     val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
     var capturedFile by remember { mutableStateOf<File?>(null) }
+    var isCropping by remember { mutableStateOf(false) }
 
     LaunchedEffect(previewView) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
@@ -252,9 +266,19 @@ fun CameraPreview(
             ) {
                 Text("Capture")
             }
+        } else if (isCropping) {
+            CropScreen(
+                file = capturedFile!!,
+                onCropDone = { croppedFile ->
+                    capturedFile = croppedFile
+                    isCropping = false
+                },
+                onCancel = { isCropping = false }
+            )
         } else {
             PhotoReviewScreen(
                 file = capturedFile!!,
+                onCrop = { isCropping = true },
                 onSave = {
                     savePhotoToGallery(context, capturedFile!!)
                     capturedFile = null
@@ -269,8 +293,120 @@ fun CameraPreview(
 }
 
 @Composable
+fun CropScreen(
+    file: File,
+    onCropDone: (File) -> Unit,
+    onCancel: () -> Unit
+) {
+    val context = LocalContext.current
+    val bitmap = remember(file) { rotateBitmapIfRequired(file) } ?: return
+    val density = LocalDensity.current
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        val displayWidth = constraints.maxWidth.toFloat()
+        val displayHeight = constraints.maxHeight.toFloat()
+
+        val scale = minOf(displayWidth / bitmap.width, displayHeight / bitmap.height)
+        val viewWidth = bitmap.width * scale
+        val viewHeight = bitmap.height * scale
+
+        var cropRect by remember(viewWidth, viewHeight) {
+            val size = minOf(viewWidth, viewHeight) * 0.8f
+            mutableStateOf(Rect(Offset((viewWidth - size) / 2, (viewHeight - size) / 2), Size(size, size)))
+        }
+
+        Box(
+            modifier = Modifier
+                .size(
+                    width = with(density) { viewWidth.toDp() },
+                    height = with(density) { viewHeight.toDp() }
+                )
+                .align(Alignment.Center)
+        ) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize()
+            )
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(viewWidth, viewHeight) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            
+                            val handleSize = 40.dp.toPx()
+                            val touchPoint = change.position
+                            
+                            val isBottomRight = (touchPoint.x - cropRect.right).let { it * it } + (touchPoint.y - cropRect.bottom).let { it * it } < handleSize * handleSize
+                            
+                            if (isBottomRight) {
+                                val newWidth = (cropRect.width + dragAmount.x).coerceIn(50f, viewWidth - cropRect.left)
+                                val newHeight = (cropRect.height + dragAmount.y).coerceIn(50f, viewHeight - cropRect.top)
+                                cropRect = Rect(cropRect.topLeft, Size(newWidth, newHeight))
+                            } else {
+                                val newTopLeft = Offset(
+                                    (cropRect.left + dragAmount.x).coerceIn(0f, viewWidth - cropRect.width),
+                                    (cropRect.top + dragAmount.y).coerceIn(0f, viewHeight - cropRect.height)
+                                )
+                                cropRect = Rect(newTopLeft, cropRect.size)
+                            }
+                        }
+                    }
+            ) {
+                drawRect(
+                    color = Color.White,
+                    topLeft = cropRect.topLeft,
+                    size = cropRect.size,
+                    style = Stroke(width = 2.dp.toPx())
+                )
+                
+                // Draw a handle at the bottom right corner
+                drawCircle(
+                    color = Color.White,
+                    radius = 8.dp.toPx(),
+                    center = cropRect.bottomRight
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(32.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            Button(
+                onClick = onCancel,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+            ) {
+                Text("Cancel")
+            }
+            Button(onClick = {
+                val croppedBitmap = Bitmap.createBitmap(
+                    bitmap,
+                    (cropRect.left / scale).toInt(),
+                    (cropRect.top / scale).toInt(),
+                    (cropRect.width / scale).toInt(),
+                    (cropRect.height / scale).toInt()
+                )
+                val croppedFile = File(context.cacheDir, "cropped_${System.currentTimeMillis()}.jpg")
+                FileOutputStream(croppedFile).use { out ->
+                    croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                }
+                onCropDone(croppedFile)
+            }) {
+                Text("Confirm Crop")
+            }
+        }
+    }
+}
+
+@Composable
 fun PhotoReviewScreen(
     file: File,
+    onCrop: () -> Unit,
     onSave: () -> Unit,
     onDiscard: () -> Unit
 ) {
@@ -300,6 +436,12 @@ fun PhotoReviewScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
             ) {
                 Text("Discard")
+            }
+            Button(
+                onClick = onCrop,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+            ) {
+                Text("Crop")
             }
             Button(onClick = onSave) {
                 Text("Save")
@@ -429,6 +571,7 @@ fun SettingsDestination(
 fun ReferenceCard(
     @DrawableRes drawable: Int,
     @StringRes label: Int,
+    @StringRes scientificName: Int,
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -463,11 +606,17 @@ fun ReferenceCard(
                         // Apply clip to the image with RoundedCornerShape for rounded edges
                         .clip(RoundedCornerShape(8.dp)),
                 )
-                Text(
-                    text = stringResource(label),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(start = 16.dp)
-                )
+                Column(modifier = Modifier.padding(start = 16.dp)) {
+                    Text(
+                        text = stringResource(label),
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        text = stringResource(scientificName),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 Spacer(modifier = Modifier.weight(1f))
                 Icon(
                     imageVector = Icons.Default.ArrowDropDown,
@@ -490,7 +639,7 @@ fun ReferenceCard(
 @Composable
 fun ReferenceCardPreview() {
     ProjectNeptuneTheme {
-        ReferenceCard(R.mipmap.manilla_clam_foreground, R.string.manilla_clam)
+        ReferenceCard(R.mipmap.manilla_clam_foreground, R.string.manilla_clam, R.string.manilla_clam_scientific)
     }
 }
 
@@ -504,7 +653,11 @@ fun ReferenceGrid(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         items(10) {
-            ReferenceCard(R.mipmap.manilla_clam_foreground, R.string.manilla_clam)
+            ReferenceCard(
+                R.mipmap.manilla_clam_foreground,
+                R.string.manilla_clam,
+                R.string.manilla_clam_scientific
+            )
         }
     }
 }
