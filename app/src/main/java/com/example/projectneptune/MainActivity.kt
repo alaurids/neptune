@@ -50,6 +50,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -154,6 +155,7 @@ fun ProjectNeptuneApp(cameraExecutor: ExecutorService? = null) {
         when (currentDestination) {
             AppDestinations.CAMERA -> CameraDestination(cameraExecutor!!)
             AppDestinations.CATCH_LOG -> CatchLogDestination()
+            AppDestinations.MAP -> MapDestination()
             AppDestinations.REFERENCE_GUIDE -> ReferenceGuideDestination()
             AppDestinations.SETTINGS -> SettingsDestination()
         }
@@ -167,6 +169,7 @@ enum class AppDestinations(
 ) {
     CAMERA("Camera", Icons.Default.CameraAlt),
     CATCH_LOG("Catch Log", Icons.Default.AutoStories),
+    MAP("Map", Icons.Default.Map),
     REFERENCE_GUIDE("Reference", R.drawable.reference_icon),
     SETTINGS("Settings", Icons.Default.Settings),
 }
@@ -548,6 +551,15 @@ fun CatchLogDestination(
     modifier: Modifier = Modifier
 ){
     Text("Catch Log", modifier = modifier)
+}
+
+@Composable
+fun MapDestination(
+    modifier: Modifier = Modifier
+){
+    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text("Map View (Coming Soon)")
+    }
 }
 
 @Composable
