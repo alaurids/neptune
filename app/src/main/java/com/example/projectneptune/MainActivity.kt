@@ -1,5 +1,8 @@
 package com.example.projectneptune
 
+import ai.onnxruntime.OnnxTensor
+import ai.onnxruntime.OrtEnvironment
+import ai.onnxruntime.OrtSession
 import android.Manifest
 import android.content.ContentValues
 import android.content.Context
@@ -95,7 +98,11 @@ import com.example.projectneptune.ui.theme.ProjectNeptuneTheme
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.FloatBuffer
 import java.text.SimpleDateFormat
+import java.util.Collections
 import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -227,6 +234,7 @@ fun CameraPreview(
 
     var capturedFile by remember { mutableStateOf<File?>(null) }
     var isCropping by remember { mutableStateOf(false) }
+    var detectionResult by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(previewView) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
@@ -282,15 +290,27 @@ fun CameraPreview(
             PhotoReviewScreen(
                 file = capturedFile!!,
                 onCrop = { isCropping = true },
-                onSave = {
-                    savePhotoToGallery(context, capturedFile!!)
-                    capturedFile = null
+                onDetect = {
+                    detectionResult = detectSpecies(context, capturedFile!!)
                 },
                 onDiscard = {
                     capturedFile?.delete()
                     capturedFile = null
+                    detectionResult = null
                 }
             )
+            
+            detectionResult?.let { result ->
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 64.dp)
+                        .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(8.dp))
+                        .padding(16.dp)
+                ) {
+                    Text(text = result, color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 }
@@ -410,7 +430,7 @@ fun CropScreen(
 fun PhotoReviewScreen(
     file: File,
     onCrop: () -> Unit,
-    onSave: () -> Unit,
+    onDetect: () -> Unit,
     onDiscard: () -> Unit
 ) {
     val bitmap = remember(file) {
@@ -441,13 +461,13 @@ fun PhotoReviewScreen(
                 Text("Discard")
             }
             Button(
-                onClick = onCrop,
+                onClick = { onCrop() },
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
             ) {
                 Text("Crop")
             }
-            Button(onClick = onSave) {
-                Text("Save")
+            Button(onClick = { onDetect() }) {
+                Text("Detect")
             }
         }
     }
@@ -514,35 +534,81 @@ private fun takePhoto(
     )
 }
 
-private fun savePhotoToGallery(context: Context, photoFile: File) {
-    val name = SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.US)
-        .format(System.currentTimeMillis())
-    val contentValues = ContentValues().apply {
-        put(MediaStore.MediaColumns.DISPLAY_NAME, name)
-        put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-        if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P) {
-            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/CameraX-Image")
-        }
-    }
-
-    val uri = context.contentResolver.insert(
-        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-        contentValues
+private fun detectSpecies(context: Context, photoFile: File): String {
+    val speciesList = listOf(
+        "blue-mussel", "butter-clam", "california-mussel", "geoduck",
+        "littleneck-clam", "manila-clam", "northern-abalone", "nuttalls-cockle",
+        "olympia-oyster", "pacific-gaper", "pacific-oyster", "pink-scallop",
+        "purple-scallop", "razor-clam", "softshell-clam", "spiny-scallop",
+        "varnish-clam", "weathervane-scallop"
     )
 
-    if (uri != null) {
-        try {
-            context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                FileInputStream(photoFile).use { inputStream ->
-                    inputStream.copyTo(outputStream)
+    try {
+        val ortEnv = OrtEnvironment.getEnvironment()
+        val modelBytes = context.assets.open("50rounds.onnx").readBytes()
+        val session = ortEnv.createSession(modelBytes)
+
+        val bitmap = rotateBitmapIfRequired(photoFile) ?: return "Failed to load image"
+        // Model expects 416x416 based on error message
+        val inputSize = 416
+        val resizedBitmap = Bitmap.createScaledBitmap(bitmap, inputSize, inputSize, true)
+        
+        val imgData = FloatBuffer.allocate(1 * 3 * inputSize * inputSize)
+        imgData.rewind()
+        
+        val pixels = IntArray(inputSize * inputSize)
+        resizedBitmap.getPixels(pixels, 0, inputSize, 0, 0, inputSize, inputSize)
+        
+        for (i in 0 until inputSize) {
+            for (j in 0 until inputSize) {
+                val pixel = pixels[i * inputSize + j]
+                imgData.put(0 * inputSize * inputSize + i * inputSize + j, ((pixel shr 16) and 0xFF) / 255.0f)
+                imgData.put(1 * inputSize * inputSize + i * inputSize + j, ((pixel shr 8) and 0xFF) / 255.0f)
+                imgData.put(2 * inputSize * inputSize + i * inputSize + j, (pixel and 0xFF) / 255.0f)
+            }
+        }
+        imgData.rewind()
+
+        val inputName = session.inputNames.iterator().next()
+        val inputTensor = OnnxTensor.createTensor(ortEnv, imgData, longArrayOf(1, 3, inputSize.toLong(), inputSize.toLong()))
+        
+        val output = session.run(Collections.singletonMap(inputName, inputTensor))
+        val resultContents = output.get(0).value as Array<Array<FloatArray>>
+        
+        val numClasses = speciesList.size
+        val resultTensor = resultContents[0]
+        val numPredictions = resultTensor[0].size // Dynamically get number of predictions
+        val confidenceThreshold = 0.005f
+        val detectedSet = mutableSetOf<String>()
+
+        for (i in 0 until numPredictions) {
+            var maxProb = 0f
+            var maxIdx = -1
+            for (j in 0 until numClasses) {
+                // YOLO output format: [box_x, box_y, box_w, box_h, class0, class1, ...]
+                // probabilities start at index 4
+                val prob = resultTensor[j + 4][i]
+                if (prob > maxProb) {
+                    maxProb = prob
+                    maxIdx = j
                 }
             }
-            Toast.makeText(context, "Saved to Gallery", Toast.LENGTH_SHORT).show()
-            photoFile.delete()
-        } catch (e: Exception) {
-            Log.e("CameraPreview", "Failed to save photo", e)
-            Toast.makeText(context, "Save failed", Toast.LENGTH_SHORT).show()
+            if (maxProb > confidenceThreshold && maxIdx != -1) {
+                detectedSet.add(speciesList[maxIdx])
+            }
         }
+
+        session.close()
+        ortEnv.close()
+        
+        return if (detectedSet.isEmpty()) {
+            "No species detected."
+        } else {
+            "Detected: ${detectedSet.joinToString(", ")}"
+        }
+    } catch (e: Exception) {
+        Log.e("Detection", "Error during inference", e)
+        return "Error: ${e.message}"
     }
 }
 

@@ -33,6 +33,9 @@ android {
     buildFeatures {
         compose = true
     }
+    androidResources {
+        noCompress += "onnx"
+    }
 }
 
 dependencies {
@@ -56,6 +59,9 @@ dependencies {
     implementation(libs.androidx.camera.view)
     implementation(libs.androidx.camera.extensions)
     implementation(libs.androidx.exifinterface)
+
+    // ONNX Runtime
+    implementation(libs.onnxruntime.android)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
