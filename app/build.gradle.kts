@@ -1,6 +1,11 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.compose)
+
+    alias(libs.plugins.google.ksp)
+    alias(libs.plugins.kotlin.android)
+
+
+
 }
 
 android {
@@ -33,9 +38,22 @@ android {
     buildFeatures {
         compose = true
     }
+    kotlinOptions {
+        jvmTarget = "11"
+    }
+    buildFeatures {
+        compose = true
+    }
+
+    composeOptions {
+        // This version (1.5.10) is the correct match for Kotlin 1.9.22
+        kotlinCompilerExtensionVersion = "1.5.10"
+    }
 }
 
 dependencies {
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -47,6 +65,10 @@ dependencies {
     implementation(libs.androidx.compose.material3.adaptive.navigation.suite)
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.compose.foundation)
+
+    //retrofit websracpper
+    implementation(libs.retrofit.core)
+    implementation(libs.retrofit.converter.gson)
     
     // CameraX
     implementation(libs.androidx.camera.core)
@@ -64,4 +86,14 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+
+    // Add these specifically for the Database to work
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
+
+}
+
+ksp {
+    arg("room.generateKotlin", "true")
 }

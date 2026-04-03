@@ -12,7 +12,6 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Log
-import android.view.Surface
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -65,6 +64,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -82,7 +82,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -99,17 +98,148 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import java.util.Date
+import androidx.compose.material.icons.filled.Gavel
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.HorizontalDivider
+import kotlinx.coroutines.withContext
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Scaffold
+
+
 
 class MainActivity : ComponentActivity() {
     private lateinit var cameraExecutor: ExecutorService
+    private lateinit var database: AppDatabase
+    private lateinit var apiService: DfoApiService
+
+    private val pacificSpecies = listOf(
+        "BUTTER_CLAM", "GEODUCK_CLAM", "HORSE_CLAM", "LITTLENECK_CLAM",
+        "MANILA_CLAM", "NUTTALLS_COCKLE", "PACIFIC_RAZOR_CLAM", "SOFTSHELL_CLAM",
+        "VARNISH_CLAM", "BLUE_MUSSEL", "CALIFORNIA_MUSSEL", "OLYMPIA_OYSTER",
+        "PACIFIC_OYSTER", "PINK_SCALLOP", "PURPLE_HINGE_ROCK_SCALLOP",
+        "SPINY_SCALLOP", "WEATHERVANE_SCALLOP", "NORTHERN_ABALONE"
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         cameraExecutor = Executors.newSingleThreadExecutor()
+        database = AppDatabase.getDatabase(this)
+
+        val retrofit = Retrofit.Builder()
+            .baseUrl("https://egisp.dfo-mpo.gc.ca/")
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+        apiService = retrofit.create(DfoApiService::class.java)
+
+        // Start the improved scraper targeting the Regulation DAO
+        scrapeAndStore(apiService, database.regulationDao())
+
         setContent {
             ProjectNeptuneTheme {
-                ProjectNeptuneApp(cameraExecutor)
+                ProjectNeptuneApp(cameraExecutor, database)
+            }
+        }
+    }
+
+    // Helper: Replicating your Python Metadata Logic
+    private fun getSpeciesMetadata(name: String): Triple<String, String, Boolean> {
+        val isProtected = name.contains("ABALONE", ignoreCase = true) ||
+                name.contains("OLYMPIA", ignoreCase = true)
+
+        val habitat = when {
+            name.contains("CLAM", ignoreCase = true) -> "Intertidal gravel and mud"
+            name.contains("OYSTER", ignoreCase = true) -> "Rocks and hard substrates"
+            name.contains("MUSSEL", ignoreCase = true) -> "Tidal rocks"
+            else -> "Marine environment"
+        }
+
+        val scientificName = when (name.uppercase()) {
+            "MANILA_CLAM" -> "Venerupis philippinarum"
+            "PACIFIC_OYSTER" -> "Magallana gigas"
+            "GEODUCK_CLAM" -> "Panopea generosa"
+            "BLUE_MUSSEL" -> "Mytilus edulis"
+            "BUTTER_CLAM" -> "Saxidomus gigantea"
+            "NORTHERN_ABALONE" -> "Haliotis kamtschatkana"
+            else -> "Mollusca"
+        }
+        return Triple(scientificName, habitat, isProtected)
+    }
+
+    // Updated to take RegulationDao instead of CatchLogDao
+    private fun scrapeAndStore(apiService: DfoApiService, regDao: RegulationDao) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                Log.d("Scraper", "Connecting to DFO Layer 0 for Regulations...")
+                val response = apiService.getShellfishData(
+                    url = "https://egisp.dfo-mpo.gc.ca/arcgis/rest/services/CSSP/Data_Public/MapServer/0/query",
+                    where = "1=1",
+                    outFields = "*",
+                    f = "json",
+                    returnGeometry = "true",
+                    outSR = "4326",
+                    returnCentroid = "false",
+                    resultRecordCount = 50
+                )
+
+                val features = response.features ?: emptyList()
+                if (features.isEmpty()) return@launch
+
+                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                val currentTime = sdf.format(Date())
+
+                // Mapping to the Regulation entity instead of CatchLog
+                val regulationsList = pacificSpecies.mapIndexed { i, species ->
+                    val feature = features[i % features.size]
+                    val geom = feature.geometry
+                    val (sciName, habitat, isProtected) = getSpeciesMetadata(species)
+
+                    var lat: Double? = null
+                    var lon: Double? = null
+
+                    if (geom != null) {
+                        if (!geom.rings.isNullOrEmpty()) {
+                            val allPoints = geom.rings!!.flatten()
+                            if (allPoints.isNotEmpty()) {
+                                lon = allPoints.mapNotNull { (it[0] as? Number)?.toDouble() }.average()
+                                lat = allPoints.mapNotNull { (it[1] as? Number)?.toDouble() }.average()
+                            }
+                        } else if (geom.x != null && geom.y != null) {
+                            lon = (geom.x as? Number)?.toDouble()
+                            lat = (geom.y as? Number)?.toDouble()
+                        }
+                    }
+
+                    if (lat == null || lon == null || lat == 0.0) {
+                        lat = 49.2827
+                        lon = -123.1207
+                    }
+
+                    // 1-to-1 copy into the Regulation object
+                    Regulation(
+                        species = species,
+                        quantity = 10,
+                        latitude = lat,
+                        longitude = lon,
+                        timeDate = currentTime,
+                        scientificName = sciName,
+                        habitat = habitat,
+                        isProtected = isProtected
+                    )
+                }
+
+                // Delete old regulations and insert the new scraped data
+                regDao.deleteAll()
+                regDao.insertRegulations(regulationsList)
+                Log.d("Scraper", "SUCCESS: Saved ${regulationsList.size} regulations to the database.")
+            } catch (e: Exception) {
+                Log.e("Scraper", "Critical Failure: ${e.message}")
             }
         }
     }
@@ -120,9 +250,11 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@PreviewScreenSizes
 @Composable
-fun ProjectNeptuneApp(cameraExecutor: ExecutorService? = null) {
+fun ProjectNeptuneApp(
+    cameraExecutor: ExecutorService? = null,
+    database: AppDatabase? = null
+) {
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.REFERENCE_GUIDE) }
 
     NavigationSuiteScaffold(
@@ -131,18 +263,8 @@ fun ProjectNeptuneApp(cameraExecutor: ExecutorService? = null) {
                 item(
                     icon = {
                         when (val icon = it.icon) {
-                            is ImageVector -> {
-                                Icon(
-                                    icon,
-                                    contentDescription = it.label
-                                )
-                            }
-                            is Int -> {
-                                Icon(
-                                    painterResource(icon),
-                                    contentDescription = it.label
-                                )
-                            }
+                            is ImageVector -> Icon(icon, contentDescription = it.label)
+                            is Int -> Icon(painterResource(icon), contentDescription = it.label)
                         }
                     },
                     label = { Text(it.label) },
@@ -154,10 +276,136 @@ fun ProjectNeptuneApp(cameraExecutor: ExecutorService? = null) {
     ) {
         when (currentDestination) {
             AppDestinations.CAMERA -> CameraDestination(cameraExecutor!!)
-            AppDestinations.CATCH_LOG -> CatchLogDestination()
+            // New Destination for the DFO Scraped Data
+            AppDestinations.REGULATIONS -> RegulationsDestination(database?.regulationDao())
+            // Original Catch Log (Now for user-inputted data)
+            AppDestinations.CATCH_LOG -> CatchLogDestination(database?.catchLogDao())
             AppDestinations.MAP -> MapDestination()
             AppDestinations.REFERENCE_GUIDE -> ReferenceGuideDestination()
             AppDestinations.SETTINGS -> SettingsDestination()
+        }
+    }
+}
+@Composable
+fun RegulationsDestination(
+    dao: RegulationDao?,
+    modifier: Modifier = Modifier
+) {
+    var regs by remember { mutableStateOf(emptyList<Regulation>()) }
+
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            dao?.let { regs = it.getAllRegulations() }
+        }
+    }
+
+    Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
+        Text("DFO Harvest Rules", style = MaterialTheme.typography.headlineMedium)
+        Text("Current limits and status for BC waters", style = MaterialTheme.typography.bodySmall)
+
+        Spacer(modifier = Modifier.size(16.dp))
+
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(regs.size) { index ->
+                val reg = regs[index]
+                RegulationCard(reg)
+            }
+        }
+    }
+}
+
+@Composable
+fun RegulationCard(reg: Regulation) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (reg.isProtected) Color(0xFFFFEBEE) else MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(reg.species.replace("_", " "), fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                if (reg.isProtected) {
+                    Icon(Icons.Default.Warning, contentDescription = null, tint = Color.Red, modifier = Modifier.size(18.dp))
+                }
+            }
+            Text(reg.scientificName ?: "", style = MaterialTheme.typography.labelSmall, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), thickness = 0.5.dp)
+            Text("Daily Limit: ${reg.quantity} per person", style = MaterialTheme.typography.bodyMedium)
+            Text("Habitat: ${reg.habitat}", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+@Composable
+fun CatchLogDestination(
+    dao: CatchLogDao?, // <--- Change this from RegulationDao to CatchLogDao
+    modifier: Modifier = Modifier
+){
+    // Change this from Regulation to CatchLog
+    var logs by remember { mutableStateOf(emptyList<CatchLog>()) }
+
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.withContext(Dispatchers.IO) {
+            // This will now call the correct function from your DAO.kt
+            dao?.let { logs = it.getAllLogs() }
+        }
+    }
+
+    Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
+        Text("Harvest Regulations", style = MaterialTheme.typography.headlineMedium)
+        Spacer(modifier = Modifier.size(16.dp))
+
+        if (logs.isEmpty()) {
+            Text("Refreshing database from DFO server...")
+        } else {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(logs.size) { index ->
+                    val reg = logs[index]
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = reg.species,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (reg.isProtected) {
+                                    Text(
+                                        text = "PROTECTED",
+                                        color = Color.Red,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        modifier = Modifier
+                                            .background(Color.Red.copy(alpha = 0.1f))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+
+                            // 1. Scientific Name
+                            Text(
+                                text = reg.scientificName ?: "Unknown Scientific Name",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color.Gray,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+
+                            // 2. Habitat Info
+                            Text(
+                                text = "Habitat: ${reg.habitat ?: "Unknown Habitat"}",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+
+                            // 3. Coordinate Formatting (Fixes the type mismatch error)
+                            Text(
+                                text = "Loc: ${"%.4f".format(reg.latitude ?: 0.0)}, ${"%.4f".format(reg.longitude ?: 0.0)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -169,6 +417,7 @@ enum class AppDestinations(
 ) {
     CAMERA("Camera", Icons.Default.CameraAlt),
     CATCH_LOG("Catch Log", Icons.Default.AutoStories),
+    REGULATIONS("Regulations", Icons.Default.Gavel), // The New Option
     MAP("Map", Icons.Default.Map),
     REFERENCE_GUIDE("Reference", R.drawable.reference_icon),
     SETTINGS("Settings", Icons.Default.Settings),
@@ -217,7 +466,7 @@ fun CameraPreview(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val previewView = remember { PreviewView(context) }
     val imageCapture: ImageCapture = remember {
         ImageCapture.Builder()
@@ -547,13 +796,6 @@ private fun savePhotoToGallery(context: Context, photoFile: File) {
 }
 
 @Composable
-fun CatchLogDestination(
-    modifier: Modifier = Modifier
-){
-    Text("Catch Log", modifier = modifier)
-}
-
-@Composable
 fun MapDestination(
     modifier: Modifier = Modifier
 ){
@@ -645,13 +887,6 @@ fun ReferenceCard(
                 )
             }
         }
-    }
-}
-
-@Composable
-fun ReferenceCardPreview() {
-    ProjectNeptuneTheme {
-        ReferenceCard(R.mipmap.manilla_clam_foreground, R.string.manilla_clam, R.string.manilla_clam_scientific)
     }
 }
 
